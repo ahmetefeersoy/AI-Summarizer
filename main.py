@@ -22,6 +22,7 @@ security = HTTPBearer()
 async def startup():
     await init_db()
     await job_manager.start()
+    # AI model will be loaded lazily on first use to save memory
 
 @app.on_event("shutdown")
 async def shutdown():

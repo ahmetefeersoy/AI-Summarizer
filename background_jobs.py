@@ -16,7 +16,6 @@ class BackgroundJobManager:
         
     async def start(self):
         self.running = True
-        await ai_model.initialize()
         asyncio.create_task(self._process_jobs())
         
     async def stop(self):

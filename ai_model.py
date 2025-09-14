@@ -39,8 +39,14 @@ class LocalAIModel:
             self.model_loaded = False
 
     async def summarize_text(self, text: str) -> str:
+        # Lazy loading - only load model when first needed
         if not self.model_loaded:
-            raise RuntimeError("Model not loaded. Call initialize() first.")
+            await self.initialize()
+            
+        if not self.model_loaded:
+            # Fallback to simple text truncation if model fails to load
+            sentences = text.strip().split('. ')
+            return sentences[0] + "." if sentences else "Summary not available."
 
         text = text.strip()
         if len(text) > self.max_input_length:
