@@ -64,5 +64,13 @@ class LocalAIModel:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def get_model_info(self) -> Dict[str, Any]:
+        return {
+            "model_name": self.model_name,
+            "device": self.device,
+            "loaded": self.model_loaded,
+            "framework": "transformers"
+        }
+
 
 ai_model = LocalAIModel()
