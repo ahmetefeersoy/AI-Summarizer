@@ -11,10 +11,13 @@ from typing import Optional, List
 import uuid
 
 app = FastAPI(
-    title="AI Summarizer API", 
+    title="AI Summarizer API",
     description="AI-powered note summarization service.",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/",      
+    redoc_url=None,    
 )
+
 
 security = HTTPBearer()
 
