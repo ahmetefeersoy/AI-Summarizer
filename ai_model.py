@@ -1,108 +1,68 @@
-import asyncio
 import logging
-from typing import Optional
-import os
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
-from dotenv import load_dotenv
-
-load_dotenv()
+from typing import Dict, Any
 
 class LocalAIModel:
     def __init__(self):
         self.summarizer = None
-        self.model_name = "facebook/bart-large-cnn"  
-        self.max_length = 512
-        self.min_length = 30
+        self.model_name = "facebook/bart-large-cnn"
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model_loaded = False
-        
+
     async def initialize(self):
-        """Initialize the local AI model"""
         try:
             logging.info(f"Loading AI model: {self.model_name} on {self.device}")
-            
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
-            
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                self.model_name,
+                device_map="auto" if self.device=="cuda" else None
+            )
+
             self.summarizer = pipeline(
                 "summarization",
                 model=model,
                 tokenizer=tokenizer,
-                device=0 if self.device == "cuda" else -1,
+                device=0 if self.device=="cuda" else -1,
                 framework="pt"
             )
-            
             self.model_loaded = True
-            logging.info("AI model loaded successfully!")
-            
+            logging.info(f"AI model loaded successfully on {self.device}!")
         except Exception as e:
             logging.error(f"Failed to load AI model: {str(e)}")
-            # Fallback to a lighter model if BART fails
-            try:
-                logging.info("Falling back to distilbart model...")
-                self.model_name = "sshleifer/distilbart-cnn-12-6"
-                self.summarizer = pipeline(
-                    "summarization",
-                    model=self.model_name,
-                    device=0 if self.device == "cuda" else -1,
-                    framework="pt"
-                )
-                self.model_loaded = True
-                logging.info("Fallback model loaded successfully!")
-            except Exception as fallback_error:
-                logging.error(f"Fallback model also failed: {str(fallback_error)}")
-                self.model_loaded = False
-    
-    async def summarize_text(self, text: str) -> str:
-        """Summarize text using the local AI model"""
-        if not self.model_loaded:
-            return self._rule_based_summarize(text)
-        
-        try:
-            text = text.strip()
-            if len(text) < 50:
-                return f"Summary: {text}"
-            
-            if len(text) > 1024:
-                text = text[:1024] + "..."
-            
-            # Generate summary using the local model
-            summary_result = self.summarizer(
-                text,
-                max_length=self.max_length,
-                min_length=self.min_length,
-                do_sample=False,
-                truncation=True
-            )
-            
-            summary = summary_result[0]['summary_text']
-            return f"{summary}"
-            
-        except Exception as e:
-            logging.error(f"AI summarization failed: {str(e)}")
-            # Fallback to rule-based
-            return self._rule_based_summarize(text)
-    
-    def _rule_based_summarize(self, text: str) -> str:
-        """Fallback rule-based summarization"""
-        sentences = text.split('. ')
-        if len(sentences) <= 2:
-            return f"Summary: {text}"
-        
-        # Return first and last sentences
-        summary = f"{sentences[0]}. {sentences[-1]}"
-        return f"Summary: {summary}"
-    
-    def get_model_info(self) -> dict:
-        """Get information about the loaded model"""
-        return {
-            "model_name": self.model_name,
-            "device": self.device,
-            "model_loaded": self.model_loaded,
-            "max_length": self.max_length,
-            "min_length": self.min_length
-        }
+            self.model_loaded = False
 
-# Global AI model instance
+    async def summarize_text(self, text: str) -> str:
+        if not self.model_loaded:
+            raise RuntimeError("Model not loaded. Call initialize() first.")
+
+        text = text.strip()
+        if len(text) > 1024:
+            text = text[:1024] + "..."
+
+        max_len = min(128, len(text.split()) + 20)
+        min_len = min(30, max_len//2)
+
+        summary_result = self.summarizer(
+            text,
+            max_length=max_len,
+            min_length=min_len,
+            do_sample=False,
+            truncation=True
+        )
+        return summary_result[0]['summary_text']
+
+    async def test_summary(self) -> Dict[str, Any]:
+        test_text = (
+            "The quick brown fox jumps over the lazy dog. "
+            "This sentence contains every letter of the English alphabet. "
+            "It is often used to test fonts and keyboard layouts."
+        )
+        try:
+            summary = await self.summarize_text(test_text)
+            return {"success": True, "summary": summary}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+
 ai_model = LocalAIModel()
