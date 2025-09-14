@@ -6,24 +6,30 @@ from typing import Dict, Any
 class LocalAIModel:
     def __init__(self):
         self.summarizer = None
-        self.model_name = "facebook/bart-large-cnn"
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_name = "sshleifer/distilbart-cnn-12-6"  
+        self.device = "cpu" 
         self.model_loaded = False
+        
+        self.max_input_length = 512  
+        self.max_summary_length = 64  
+        self.min_summary_length = 16  
 
     async def initialize(self):
         try:
             logging.info(f"Loading AI model: {self.model_name} on {self.device}")
+            
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 self.model_name,
-                device_map="auto" if self.device=="cuda" else None
+                torch_dtype=torch.float32,  
+                low_cpu_mem_usage=True      
             )
 
             self.summarizer = pipeline(
                 "summarization",
                 model=model,
                 tokenizer=tokenizer,
-                device=0 if self.device=="cuda" else -1,
+                device=-1,  
                 framework="pt"
             )
             self.model_loaded = True
@@ -37,20 +43,27 @@ class LocalAIModel:
             raise RuntimeError("Model not loaded. Call initialize() first.")
 
         text = text.strip()
-        if len(text) > 1024:
-            text = text[:1024] + "..."
+        if len(text) > self.max_input_length:
+            text = text[:self.max_input_length] + "..."
 
-        max_len = min(128, len(text.split()) + 20)
-        min_len = min(30, max_len//2)
+        word_count = len(text.split())
+        max_len = min(self.max_summary_length, word_count // 2 + 10)
+        min_len = min(self.min_summary_length, max_len // 3)
 
-        summary_result = self.summarizer(
-            text,
-            max_length=max_len,
-            min_length=min_len,
-            do_sample=False,
-            truncation=True
-        )
-        return summary_result[0]['summary_text']
+        try:
+            summary_result = self.summarizer(
+                text,
+                max_length=max_len,
+                min_length=min_len,
+                do_sample=False,
+                truncation=True,
+                clean_up_tokenization_spaces=True
+            )
+            return summary_result[0]['summary_text']
+        except Exception as e:
+            logging.error(f"Summarization failed: {str(e)}")
+            sentences = text.split('. ')
+            return sentences[0] + "." if sentences else "Summary not available."
 
     async def test_summary(self) -> Dict[str, Any]:
         test_text = (
@@ -69,7 +82,10 @@ class LocalAIModel:
             "model_name": self.model_name,
             "device": self.device,
             "loaded": self.model_loaded,
-            "framework": "transformers"
+            "framework": "transformers",
+            "optimization": "low_memory_cpu",
+            "max_input_length": self.max_input_length,
+            "max_summary_length": self.max_summary_length
         }
 
 
